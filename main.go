@@ -81,7 +81,7 @@ func Generate(name string, t time.Time) (err error) {
 }
 
 func main() {
-	ticker := time.NewTicker(time.Minute * 10)
+	ticker := time.NewTicker(time.Minute * 30)
 	defer ticker.Stop()
 
 	log.Println("Start")
