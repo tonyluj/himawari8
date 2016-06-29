@@ -93,7 +93,7 @@ func main() {
 
 			m := t.Minute()/10*10 - 30 - t.Minute()
 			nt := t.Add(time.Duration(m) * time.Minute)
-			err := Generate(fmt.Sprintf("result_%v.webp", t.Format("200601021504")), nt.In(time.UTC))
+			err := Generate(fmt.Sprintf("result_%v.png", t.Format("200601021504")), nt.In(time.UTC))
 			if err != nil {
 				log.Println(err)
 				continue
