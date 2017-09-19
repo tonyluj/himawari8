@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"image"
@@ -12,11 +13,19 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"github.com/nfnt/resize"
 	"github.com/pkg/errors"
+	"google.golang.org/api/option"
+)
+
+var (
+	bucketName        string
+	now               bool
+	serviceAccountKey string
+	client            *storage.Client
 )
 
 type Resolution struct {
@@ -129,13 +138,6 @@ func Generate(name string, t time.Time, resolutions ...Resolution) (err error) {
 		files = append(files, fs)
 	}
 
-	f, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		err = errors.Wrap(err, "generate error")
-		return
-	}
-	defer f.Close()
-
 	src := make([][]io.Reader, 20)
 	for x := 0; x < 20; x++ {
 		inner := make([]io.Reader, 20)
@@ -155,11 +157,13 @@ func Generate(name string, t time.Time, resolutions ...Resolution) (err error) {
 	for _, r := range resolutions {
 		rimg := Draw(img, r)
 
-		err = jpeg.Encode(f, rimg, nil)
+		w := CloudFile(fmt.Sprintf("%v_%v.jpg", name, r.Name))
+		err = jpeg.Encode(w, rimg, nil)
 		if err != nil {
 			err = errors.Wrap(err, "generate error")
 			return
 		}
+		w.Close()
 	}
 
 	for x := 0; x < 20; x++ {
@@ -172,27 +176,32 @@ func Generate(name string, t time.Time, resolutions ...Resolution) (err error) {
 	return
 }
 
-func main() {
-	var (
-		now       bool
-		outputDir string
-	)
+func CloudFile(name string) (w io.WriteCloser) {
+	bucket := client.Bucket(bucketName)
+	obj := bucket.Object(name)
+	w = obj.NewWriter(context.Background())
+	return
+}
+
+func init() {
 	flag.BoolVar(&now, "now", false, "generate now")
-	flag.StringVar(&outputDir, "output", "", "output dir")
+	flag.StringVar(&serviceAccountKey, "key", "", "Google cloud service account key")
+	flag.StringVar(&bucketName, "bucket", "", "Google cloud storage bucket")
 	flag.Parse()
 
 	var err error
-	outputDir, err = filepath.Abs(outputDir)
+	client, err = storage.NewClient(context.Background(), option.WithServiceAccountFile(serviceAccountKey))
 	if err != nil {
-		log.Println(err)
-		return
+		log.Fatal(err)
 	}
+}
 
+func main() {
 	rs := make([]Resolution, 0, 5)
 	//rs = append(rs, Resolution{7680, 4320, "8k"})
 	//rs = append(rs, Resolution{5120, 2160, "5k"})
 	rs = append(rs, Resolution{3840, 2160, "4k"})
-	//rs = append(rs, Resolution{2880, 1800, "3k_16:10"})
+	rs = append(rs, Resolution{2880, 1800, "3k_16:10"})
 	//rs = append(rs, Resolution{1920, 1080, "1k"})
 
 	if now {
@@ -201,9 +210,9 @@ func main() {
 
 		m := t.Minute()/10*10 - 30 - t.Minute()
 		nt := t.Add(time.Duration(m) * time.Minute)
-		fileName := fmt.Sprintf("earth_%v.jpg", t.Format("200601021504"))
+		fileName := fmt.Sprintf("earth_%v", t.Format("200601021504"))
 
-		err := Generate(filepath.Join(outputDir, fileName), nt.In(time.UTC), rs...)
+		err := Generate(fileName, nt.In(time.UTC), rs...)
 		if err != nil {
 			log.Println(err)
 			return
@@ -225,9 +234,9 @@ func main() {
 
 			m := t.Minute()/10*10 - 30 - t.Minute()
 			nt := t.Add(time.Duration(m) * time.Minute)
-			fileName := fmt.Sprintf("earth_%v.jpg", t.Format("200601021504"))
+			fileName := fmt.Sprintf("earth_%v", t.Format("200601021504"))
 
-			err := Generate(filepath.Join(outputDir, fileName), nt.In(time.UTC), rs...)
+			err := Generate(fileName, nt.In(time.UTC), rs...)
 			if err != nil {
 				log.Println(err)
 				continue
